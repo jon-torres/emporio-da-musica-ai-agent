@@ -187,7 +187,7 @@ Uma interface visual completa com painel lateral de status e botões de atalho p
 ```bash
 uv run streamlit run src/emporio_agent/ui.py
 ```
-Acesse no navegador: `http://localhost:8501`.
+Acesse no navegador: `http://localhost:8501` ou `http://127.0.0.1:8501`.
 
 ### 3. Testes Automatizados
 O repositório conta com uma suíte de 15 testes unitários e de integração cobrindo banco de dados, motor RAG e os cenários do agente:
