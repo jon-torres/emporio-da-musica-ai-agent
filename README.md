@@ -1,89 +1,91 @@
-# 🎸 Empório da Música — Agente de Atendimento com IA
+# 🎸 Empório da Música — AI Customer Service Agent
 
-Projeto desenvolvido para o **Desafio Técnico de AI Engineer na Artefact**. Consiste em um agente de atendimento virtual inteligente para a **Empório da Música**, loja especializada em instrumentos musicais localizada em Campo Grande/MS.
+Project developed for the **AI Engineer Technical Challenge at Artefact**. It consists of an intelligent virtual customer service agent for **Empório da Música**, a specialized musical instruments store located in Campo Grande, Mato Grosso do Sul (Brazil).
 
-O agente é capaz de responder dúvidas de clientes, consultar estoque e catálogo em tempo real, rastrear pedidos, aplicar políticas de trocas e devoluções (CDC) e redirecionar adequadamente perguntas fora de escopo (como pedidos de acessórios avulsos).
-
----
-
-## 📋 Sumário
-- [Arquitetura da Solução](#-arquitetura-da-solução)
-- [Estrutura do Repositório](#-estrutura-do-repositório)
-- [Instalação e Configuração](#-instalação-e-configuração)
-- [Como Executar](#-como-executar)
-  - [Interface de Linha de Comando (CLI)](#1-interface-de-linha-de-comando-cli)
-  - [Interface Web (Streamlit)](#2-interface-web-streamlit)
-  - [Testes Automatizados](#3-testes-automatizados)
-- [Justificativas das Decisões Técnicas](#-justificativas-das-decisões-técnicas)
-- [Limitações Conhecidas e Próximos Passos](#-limitações-conhecidas-e-próximos-passos)
-- [Uso de Assistentes de Código](#-uso-de-assistentes-de-código)
+The agent handles customer inquiries, checks real-time inventory and catalog pricing, tracks customer orders, applies store exchange and return policies (Brazilian Consumer Protection Code - CDC), maintains strict factual accuracy, and handles out-of-scope inquiries (such as politely redirecting customers asking for guitar strings, cables, or accessories).
 
 ---
 
-## 🏛️ Arquitetura da Solução
+## 📋 Table of Contents
+- [Architecture Overview](#-architecture-overview)
+- [Repository Structure](#-repository-structure)
+- [Installation and Environment Setup](#-installation-and-environment-setup)
+- [How to Run](#-how-to-run)
+  - [Command Line Interface (CLI)](#1-command-line-interface-cli)
+  - [Web Interface (Streamlit)](#2-web-interface-streamlit)
+  - [Automated Tests](#3-automated-tests)
+- [Technical Decisions & Justifications](#-technical-decisions--justifications)
+- [Guardrails & Prompt Injection Defense](#-guardrails--prompt-injection-defense)
+- [Known Limitations & Future Roadmap](#-known-limitations--future-roadmap)
+- [Use of AI Coding Assistants](#-use-of-ai-coding-assistants)
 
-A solução adota uma abordagem **Híbrida (Function Calling / ReAct + RAG + Banco Relacional)**:
+---
+
+## 🏛️ Architecture Overview
+
+The solution adopts a **Hybrid Architecture (Function Calling / ReAct + RAG + Relational Database)**:
 
 ```text
                                +----------------------------+
-                               |     Mensagem do Cliente    |
+                               |      Customer Message      |
                                +--------------+-------------+
                                               |
                                               v
                                +----------------------------+
-                               |   EmporioAgent (Loop ReAct)|
-                               |  - Persona Empório Música  |
-                               |  - Gestão de Memória       |
+                               |   EmporioAgent (ReAct Loop)|
+                               |  - Empório Music Persona   |
+                               |  - Session Memory Manager  |
                                +--------------+-------------+
                                               |
                        +----------------------+----------------------+
-                       | Decide ferramenta com base no contexto      |
+                       | Autonomous Tool Selection based on Context  |
                        v                                             v
         +-----------------------------+               +-----------------------------+
-        |  Dados Operacionais (DB)    |               |  Políticas da Loja (RAG)    |
+        |   Operational Data (DB)     |               |     Store Policies (RAG)    |
         |  - search_catalog           |               |  - consult_store_policies   |
         |  - get_product_details      |               |  - get_store_info           |
         |  - check_order_status       |               +--------------+--------------+
         +--------------+--------------+                              |
                        |                                             v
                        v                              +-----------------------------+
-        +-----------------------------+               | BM25 + Boosting Semântico   |
-        | SQLite Indexado (CSVs)      |               | Manual de Políticas (.pdf)  |
-        | - produtos, preços, estoque |               | - trocas, fretes, horários  |
-        | - clientes, pedidos, itens  |               +-----------------------------+
-        | - promoções ativas/inativas |
+        +-----------------------------+               | BM25 + Semantic Boosting    |
+        | Indexed SQLite (from CSVs)  |               | Store Policy Manual (.pdf)  |
+        | - products, prices, stock   |               | - returns, shipping, hours  |
+        | - customers, orders, items  |               +-----------------------------+
+        | - active/expired promotions |
         +--------------+--------------+
                        |
                        +----------------------+
                                               |
                                               v
                                +----------------------------+
-                               |  Síntese da Resposta Final |
-                               |  - Tom amigável de música  |
-                               |  - Fidedignidade factual   |
+                               |    Final Response Synthesis|
+                               |  - Friendly musical persona|
+                               |  - Absolute factual truth  |
                                +----------------------------+
 ```
 
-1. **Camada de Dados Operacionais (SQLite)**: As tabelas operacionais (`products.csv`, `orders.csv`, `order_items.csv`, `customers.csv`, `categories.csv`, `promotions.csv`) são ingeridas em um banco SQLite indexado. Consultas numéricas (ex.: violões até R$ 1.000,00) ou filtros de estoque utilizam SQL direto com tipagem Pydantic, garantindo 0% de alucinação em preços e quantidades.
-2. **Camada de Políticas (RAG)**: O documento `políticas_da_loja.pdf` é extraído e particionado em seções semânticas oficiais, indexadas via algoritmo **BM25Okapi** com expansão de sinônimos e boosting por tags contextuais (devoluções, CDC, horários, parcelamento, frete para Campo Grande).
-3. **Agente e Roteador de Ferramentas**: Identifica a intenção do usuário e orquestra a chamada de ferramentas tipadas, mantendo a persona e aplicando as regras de transparência (ex.: informar promoções expiradas e redirecionar consultas de acessórios).
+1. **Operational Data Layer (SQLite)**: Operational CSV datasets (`products.csv`, `orders.csv`, `order_items.csv`, `customers.csv`, `categories.csv`, `promotions.csv`) are ingested into an indexed SQLite relational database on startup. Numeric constraints (e.g., acoustic guitars up to R$ 1,000.00) and stock availability use structured SQL queries typed with Pydantic models, guaranteeing **0% hallucination** on inventory numbers and prices.
+2. **Policy Retrieval Layer (RAG)**: The store manual (`políticas_da_loja.pdf`) is extracted and partitioned into authoritative semantic sections, indexed using **BM25Okapi** with keyword normalization and metadata tag boosting (returns, warranty, business hours, installment plans, local shipping).
+3. **Agent & Tool Orchestrator**: Identifies customer intent and orchestrates tool execution, enforcing store identity guidelines (e.g., active transparency on expired promotions and courteous redirection when asked for accessories).
 
 ---
 
-## 📁 Estrutura do Repositório
+## 📁 Repository Structure
 
-O projeto segue as melhores práticas da comunidade Python moderna, com empacotamento gerenciado via `uv`:
+The project follows modern Python community standards with package management powered by `uv`:
 
 ```text
 .
-├── .env.example                     # Modelo de variáveis de ambiente
-├── .gitignore                       # Ignora venvs, caches e bancos locais
-├── pyproject.toml                   # Especificação do pacote e dependências (PEP 621)
-├── README.md                        # Documentação técnica completa
-├── data/                            # Dados fornecidos pela loja
+├── .env.example                     # Environment variables template
+├── .gitignore                       # Ignores venvs, cache, and local secrets
+├── pyproject.toml                   # PEP 621 package metadata & dependencies
+├── README.md                        # Full technical documentation (English)
+├── README.pdf                       # Converted publication-ready PDF document
+├── data/                            # Datasets provided by the challenge
 │   ├── desafio_tecnico_ai_eng - *.csv
 │   └── políticas_da_loja.pdf
-├── examples/                        # Exemplos de conversas reais (.md)
+├── examples/                        # Real verified conversation transcripts (.md)
 │   ├── 01_catalog_budget_search.md
 │   ├── 02_store_info_and_hours.md
 │   ├── 03_price_and_specs_check.md
@@ -92,159 +94,162 @@ O projeto segue as melhores práticas da comunidade Python moderna, com empacota
 ├── src/
 │   └── emporio_agent/
 │       ├── __init__.py
-│       ├── config.py                # Configurações com Pydantic Settings
-│       ├── cli.py                   # Interface de terminal interativa (Rich)
-│       ├── ui.py                    # Interface Web com Streamlit
+│       ├── config.py                # Typed settings using Pydantic Settings
+│       ├── cli.py                   # Interactive Rich terminal CLI
+│       ├── ui.py                    # Streamlit web chat interface
 │       ├── db/
-│       │   ├── schema.py            # Modelos Pydantic (Product, Order, Promo, etc.)
-│       │   └── database.py          # Ingestão e consultas ao SQLite
+│       │   ├── schema.py            # Pydantic schemas (Product, Order, Promo)
+│       │   └── database.py          # SQLite loader & typed queries
 │       ├── rag/
-│       │   ├── parser.py            # Extração de PDF e segmentação de seções
-│       │   └── retriever.py         # Recuperador BM25 com boosting semântico
+│       │   ├── parser.py            # PDF parser & semantic section chunker
+│       │   └── retriever.py         # BM25 retriever with tag boosting
 │       ├── tools/
-│       │   └── definitions.py       # Registro e schemas de Function Calling
+│       │   └── definitions.py       # Function calling registry & JSON schemas
 │       └── agent/
-│           ├── prompts.py           # Persona da Empório da Música e System Prompt
-│           ├── memory.py            # Histórico de mensagens da sessão
-│           ├── llm_client.py        # Suporte a Gemini, Groq, Ollama e Mock
-│           └── core.py              # Ciclo autônomo ReAct do agente
+│           ├── prompts.py           # Empório da Música system prompt & persona
+│           ├── memory.py            # Conversation turn history
+│           ├── guardrails.py        # Pre-flight injection filter & post-flight sanitizer
+│           ├── llm_client.py        # Multi-provider client (Gemini, Groq, Ollama, Mock)
+│           └── core.py              # Autonomous agent loop
 └── tests/
-    ├── test_database.py             # Testes unitários do banco e filtros de catálogo
-    ├── test_rag.py                  # Testes do recuperador de políticas
-    └── test_agent.py                # Testes end-to-end dos cenários do desafio
+    ├── test_database.py             # Database query & filter unit tests
+    ├── test_rag.py                  # Policy manual retrieval unit tests
+    └── test_agent.py                # End-to-end agent scenario & guardrail tests
 ```
 
 ---
 
-## ⚙️ Instalação e Configuração
+## ⚙️ Installation and Environment Setup
 
-O projeto utiliza o [`uv`](https://docs.astral.sh/uv/), o gerenciador de pacotes e ambientes virtuais ultrarrápido em Rust para Python.
+The project uses [`uv`](https://docs.astral.sh/uv/), the fast, modern Python package manager written in Rust.
 
-### Pré-requisitos
+### Prerequisites
 - Python `>= 3.11`
-- `uv` instalado (`curl -LsSf https://astral.sh/uv/install.sh | sh` ou `brew install uv`)
+- `uv` installed (`curl -LsSf https://astral.sh/uv/install.sh | sh` or `brew install uv`)
 
-### 1. Clonar e sincronizar dependências
+### 1. Clone and Sync Dependencies
 ```bash
-# Sincroniza todas as dependências e o ambiente de desenvolvimento (.venv)
+# Automatically sets up the virtual environment (.venv) and all dependencies
 uv sync --extra dev
 ```
 
-### 2. Configurar Variáveis de Ambiente
-Copie o arquivo de exemplo:
+### 2. Configure Environment Variables
+Copy the template file:
 ```bash
 cp .env.example .env
 ```
 
-Abra o arquivo `.env` e escolha o provedor desejado:
+Open `.env` and select your preferred LLM provider:
 
-#### Opção A: Google Gemini (Recomendado — Camada Gratuita)
-O Google AI Studio oferece cotas gratuitas para os modelos `gemini-1.5-flash` e `gemini-2.0-flash`.
-1. Gere sua chave gratuita em [aistudio.google.com](https://aistudio.google.com/).
-2. No `.env`:
+#### Option A: Google Gemini (Recommended — Free Tier)
+Google AI Studio offers free tier access for `gemini-1.5-flash`, `gemini-2.0-flash`, and `gemini-3.5-flash-lite`.
+1. Generate your free API key at [aistudio.google.com](https://aistudio.google.com/).
+2. In `.env`:
    ```ini
    LLM_PROVIDER=gemini
-   GEMINI_API_KEY=sua_chave_aqui
-   GEMINI_MODEL=gemini-1.5-flash
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_MODEL=gemini-3.5-flash-lite
    ```
 
-#### Opção B: Groq (Gratuito via API)
-1. Gere sua chave gratuita em [console.groq.com](https://console.groq.com/).
-2. No `.env`:
+#### Option B: Groq (Free Tier via API)
+1. Get a free API key at [console.groq.com](https://console.groq.com/).
+2. In `.env`:
    ```ini
    LLM_PROVIDER=groq
-   GROQ_API_KEY=sua_chave_aqui
+   GROQ_API_KEY=your_groq_api_key_here
    GROQ_MODEL=llama-3.3-70b-versatile
    ```
 
-#### Opção C: Ollama (100% Local e Gratuito)
-Execute localmente sem necessidade de chaves:
+#### Option C: Ollama (100% Local & Free)
+Run fully offline on your machine with zero API keys:
 ```ini
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 ```
 
-#### Opção D: Modo Mock Determinístico (Zero Configuração / Testes Offline)
-Caso nenhuma chave seja informada, o sistema entra automaticamente no modo `mock`. Este modo executa todas as ferramentas, calcula estoque e preços reais e gera as respostas na persona da loja sem fazer chamadas externas à internet.
+#### Option D: Deterministic Mock Mode (Zero Setup / Offline Evaluation)
+If no API key is supplied, the agent automatically runs in `mock` mode. It executes all tools, computes real stock/prices from the SQLite database, and formulates responses in the store's persona without making external network calls.
 
 ---
 
-## 🚀 Como Executar
+## 🚀 How to Run
 
-### 1. Interface de Linha de Comando (CLI)
-Uma interface rica e interativa desenvolvida com [Rich]:
+### 1. Command Line Interface (CLI)
+An interactive terminal experience with Markdown rendering and real-time tool inspection:
 ```bash
 uv run emporio-agent
 ```
-*Comandos disponíveis durante o chat:*
-- `/debug`: Ativa/desativa a visualização em tempo real das ferramentas chamadas pelo agente.
-- `/reset`: Reinicia a memória e o histórico da conversa.
-- `/sair`: Encerra o atendimento.
+*Available CLI shortcuts:*
+- `/debug`: Toggle real-time inspection of tool calls made by the agent.
+- `/reset`: Clear conversation memory.
+- `/sair` or `exit`: Exit the session.
 
-### 2. Interface Web (Streamlit)
-Uma interface visual completa com painel lateral de status e botões de atalho para perguntas rápidas:
+### 2. Web Interface (Streamlit)
+A full-featured chat interface with a sidebar containing quick question shortcuts, system status, and collapsible tool inspection drawers:
 ```bash
 uv run streamlit run src/emporio_agent/ui.py
 ```
-Acesse no navegador: `http://localhost:8501` ou `http://127.0.0.1:8501`.
+Open in your browser: `http://localhost:8501` or `http://127.0.0.1:8501`.
 
-### 3. Testes Automatizados
-O repositório conta com uma suíte de 15 testes unitários e de integração cobrindo banco de dados, motor RAG e os cenários do agente:
+### 3. Automated Tests
+A suite of 17 automated tests covering database queries, RAG retrieval, agent scenarios, and prompt injection defense:
 ```bash
 uv run pytest -v
 ```
 
 ---
 
-## 🧠 Justificativas das Decisões Técnicas
+## 🧠 Technical Decisions & Justifications
 
-| Decisão | Escolha | Justificativa |
+| Technical Decision | Selected Approach | Justification |
 |---|---|---|
-| **Abordagem do Agente** | **Tool Calling / ReAct com Pydantic** | O atendimento a uma loja de instrumentos exige exatidão em preços, estoque e status de remessa. Um LLM puro alucina números e não tem acesso a dados em tempo real. Com Function Calling tipado via Pydantic, o modelo decide de forma autônoma *quando* consultar o banco relacional e *quando* recorrer ao manual de políticas. |
-| **Camada de Dados Operacionais** | **SQLite Relacional em Memória/Disco** | CSVs planos não oferecem indexação eficiente nem operações relacionais (ex.: associar `order_items` com `products` e `promotions`). O SQLite é leve, não requer servidores externos, é reproduzível em qualquer máquina e permite consultas com filtros combinados (`preço <= 1000`, `categoria = Violões` e `estoque > 0`). |
-| **Camada de Políticas (RAG)** | **Chunking Semântico + BM25Okapi** | O manual de atendimento é um documento regulatório estruturado em 10 seções (regras de CDC, fretes locais, garantias). O particionamento respeita as fronteiras lógicas dos tópicos, e o BM25 com boosting garante precisão léxica exata em prazos numéricos (ex.: "7 dias", "30 dias", "90 dias", "R$ 500,00"), superando modelos de embeddings puros que frequentemente confundem prazos diferentes. |
-| **Modelos e Provedores** | **Agnóstico (Gemini / Groq / Ollama / Mock)** | Atendendo à preferência por modelos gratuitos, a camada de abstração em `llm_client.py` suporta a API gratuita do Google Gemini e do Groq, além de modelos locais via Ollama e um provedor Mock para CI/CD sem dependência de internet. |
-| **Estratégia de Prompt & Persona** | **Persona Empática Musical com Guardrails** | A identidade da loja requer um atendente que pareça "um amigo que entende de música", sem ser frio ou excessivamente cerimonioso. O prompt orienta ativamente a honestidade em promoções expiradas e o redirecionamento cordial para parceiros quando o cliente busca acessórios (não vendidos pela loja). |
+| **Agent Architecture** | **Tool Calling / ReAct with Pydantic** | Customer service for musical instruments requires exact numbers for prices, stock quantities, and order tracking. Pure LLM prompting hallucinates numerical details. Structured Pydantic tool calling allows the model to autonomously determine *when* to query operational databases and *when* to retrieve store policy guidelines. |
+| **Operational Data Layer** | **Indexed SQLite Relational DB** | Flat CSVs do not provide fast indexed filtering or relational joins (e.g., linking `order_items` with `products` and `promotions`). SQLite is lightweight, serverless, 100% reproducible across developer machines, and enables compound filtering (`price <= 1000`, `category = 'Violões'`, `stock > 0`). |
+| **Policy Retrieval (RAG)** | **Semantic Section Chunking + BM25Okapi** | Store policy manuals are regulatory documents structured into 10 explicit sections (consumer protection laws, local delivery fees, warranty terms). Section-boundary chunking respects contextual coherence, and BM25 with tag boosting delivers lexical precision on numerical time windows ("7 days", "30 days", "90 days", "R$ 500,00"), outperforming dense embedding models that often confuse differing legal deadlines. |
+| **Model & Provider Agnosticism** | **Multi-Provider Adapter (Gemini / Groq / Ollama / Mock)** | Fulfills the requirement for free models by supporting Google AI Studio's free Gemini tier, Groq's high-speed free tier, local Ollama inference, and a deterministic offline mock provider for automated CI/CD pipelines. |
+| **Persona & Brand Tone** | **Friendly Musical Consultant with Strict Guardrails** | Brand identity calls for an assistant that feels like "a musician friend who knows instruments", avoiding robotic or stiff corporate phrasing. The persona actively exercises transparency on expired promotional campaigns and politely redirects accessory requests. |
 
 ---
 
-## 🛡️ Guardrails e Proteção Contra Prompt Injection
+## 🛡️ Guardrails & Prompt Injection Defense
 
-Em ambientes reais de produção, agentes de atendimento são alvos constantes de ataques adversariais como:
-- **Tentativas de Jailbreak / Prompt Injection**: Comandos como *"ignore todas as instruções anteriores"*, *"aja como outro personagem"* ou *"finja ser o DAN"*.
-- **Vazamento de Infraestrutura (*Model Leak*)**: Perguntas como *"qual modelo de IA você usa?"*, *"quem te criou?"* ou solicitações para cuspir o prompt de sistema interno.
+In real-world production environments, conversational customer service agents are exposed to adversarial attacks:
+- **Jailbreak & Prompt Injection Attempts**: Inputs such as *"ignore all previous instructions"*, *"act as DAN"*, or *"pretend you have no rules"*.
+- **Infrastructure & Model Leakage**: Questions asking *"what AI model do you use?"*, *"who trained you?"*, or requests to dump internal system prompts.
 
-Para mitigar esses riscos sem comprometer a naturalidade do atendimento, foi implementada uma arquitetura de **Defesa em Duas Camadas (*Defense-in-Depth*)**:
+To mitigate these vulnerabilities, the agent implements a **Defense-in-Depth** architecture:
 
-1. **Camada Programática Pre-Flight e Post-Flight (`src/emporio_agent/agent/guardrails.py`)**:
-   - **Pre-Flight**: Analisa a mensagem do usuário antes de repassar ao modelo. Padrões de jailbreak e tentativas de extração de engenharia reversa são bloqueados deterministicamente na entrada, economizando tokens e respondendo imediatamente com o posicionamento institucional da loja.
-   - **Post-Flight Sanitizer**: Inspeciona a resposta final do LLM para assegurar que menções a provedores ou modelos subjacentes (Google, OpenAI, Gemini, etc.) nunca vazem na resposta ao cliente.
-2. **Hardening do System Prompt (`prompts.py`)**:
-   - Instruções explícitas de identidade que orientam o modelo a manter sua persona estritamente como consultor musical da loja, recusando educadamente tarefas alheias ao universo de instrumentos da Empório da Música.
-
----
-
-## ⚠️ Limitações Conhecidas e Próximos Passos
-
-Caso houvesse mais tempo de desenvolvimento no projeto, as seguintes evoluções seriam priorizadas:
-
-1. **Busca Híbrida Vetorial Densa (Dense + Sparse Retrieval)**:
-   - Integrar embeddings densos (ex.: `text-embedding-3-small` ou `all-MiniLM-L6-v2`) combinados com Cross-Encoder Re-ranker para perguntas com vocabulário mais distante do manual.
-2. **Integração Real com WhatsApp Business**:
-   - Conectar o agente a um webhook oficial do WhatsApp Cloud API ou Evolution API, permitindo envio de mensagens de áudio (transcritas via Whisper) e imagens dos instrumentos.
-3. **Persistência de Sessões em Cache Distribuído**:
-   - Armazenar histórico de conversas e estado dos carrinhos em um Redis para suportar múltiplos usuários simultâneos com retenção entre dias.
-4. **Framework de Avaliação Contínua (LLM-as-a-Judge)**:
-   - Implementar pipeline com Ragas ou DeepEval para pontuar automaticamente métricas de fidelidade factual (*faithfulness*), precisão de recuperação (*context precision*) e aderência ao tom de voz (*tone adherence*).
+1. **Programmatic Pre-Flight & Post-Flight Guardrails (`src/emporio_agent/agent/guardrails.py`)**:
+   - **Pre-Flight Filter**: Inspects incoming messages before sending them to the LLM. Adversarial prompt injection attacks and meta-inquiries about underlying models are intercepted deterministically at the perimeter, saving token costs and responding immediately with the store's persona.
+   - **Post-Flight Sanitizer**: Inspects outgoing responses to guarantee that internal model identifiers (Google, Gemini, OpenAI, etc.) are never leaked.
+   - **Standard Protected Response**:
+     > *"Hello! Everything good? 🎸 I am the exclusive virtual assistant for Empório da Música! My sole focus is to help you discover great musical instruments, check our catalog, pricing, orders, and answer store policy questions. How can I assist your sound today?"*
+2. **System Prompt Hardening (`src/emporio_agent/agent/prompts.py`)**:
+   - Explicit persona grounding forbidding out-of-scope tasks (such as writing non-store code, discussing politics, or acknowledging third-party software providers).
 
 ---
 
-## 🤖 Uso de Assistentes de Código
+## ⚠️ Known Limitations & Future Roadmap
 
-Em total conformidade com as diretrizes do processo seletivo da Artefact, este projeto foi desenvolvido com o auxílio do assistente de engenharia de software da plataforma (Antigravity):
+With additional development time, the following improvements would be prioritized:
 
-- **Planejamento Arquitetural**: Estruturação inicial do plano de desenvolvimento em tarefas atômicas e definição da árvore de módulos.
-- **Implementação e Pair Programming**: Escrita dos componentes de ingestão de dados, normalização de texto do PDF via `pypdf` e schemas de validação Pydantic.
-- **Testes Unitários (TDD)**: Criação das fixtures do `pytest` e validação dos 5 cenários do desafio.
-- **Transparência**: O assistente acelerou o ciclo de scaffolding e implementação, enquanto todas as decisões conceituais, lógica de negócio da Empório da Música e validação técnica foram rigorosamente guiadas pelos requisitos do desafio.
+1. **Hybrid Dense + Sparse Vector Search**:
+   - Combine BM25 with dense semantic embeddings (e.g., `text-embedding-3-small` or `bge-small-en-v1.5`) alongside a cross-encoder re-ranker for colloquial customer phrasing.
+2. **WhatsApp Business Cloud API Integration**:
+   - Connect webhooks to WhatsApp Cloud API or Evolution API, adding voice message audio transcription via Whisper and automated instrument picture cards.
+3. **Distributed Session State with Redis**:
+   - Persist customer session memory and cart state across distributed worker nodes with TTL-based retention.
+4. **Continuous Evaluation Pipeline (LLM-as-a-Judge)**:
+   - Automated quality gates using Ragas or DeepEval measuring *faithfulness*, *context recall*, and *tone adherence*.
+
+---
+
+## 🤖 Use of AI Coding Assistants
+
+In full alignment with the Artefact evaluation guidelines, this project was developed in pair-programming with the platform's AI engineering coding assistant (Antigravity):
+
+- **Architectural Planning**: Decomposing requirements into atomic tasks with test-driven checkpoints.
+- **Implementation & Data Ingestion**: Writing the SQLite ingestion pipeline, PDF extraction with `pypdf`, and Pydantic validation schemas.
+- **Test-Driven Verification**: Writing and verifying the 17-test pytest suite across catalog queries, RAG retrieval, and adversarial guardrail resilience.
+- **Transparency**: The assistant accelerated boilerplate scaffolding and test authoring, while domain logic, store policies, and architectural decisions were driven strictly by the challenge specifications.
