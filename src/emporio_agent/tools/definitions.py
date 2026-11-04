@@ -18,9 +18,9 @@ class ToolRegistry:
         max_price: Optional[float] = None,
         min_price: Optional[float] = None,
         in_stock_only: bool = True,
-        limit: int = 5,
+        limit: int = 15,
     ) -> str:
-        """Busca produtos no catálogo da Empório da Música por nome, categoria, faixa de preço e estoque."""
+        """Busca produtos no catálogo da Empório da Música por termo/modelo (ex: 'Takamine', 'violão', 'yamaha', 'nylon'), categoria, faixa de preço e estoque."""
         products = self.db.search_products(
             query=query,
             category=category,
@@ -51,7 +51,7 @@ class ToolRegistry:
         return json.dumps(results, ensure_ascii=False, indent=2)
 
     def get_product_details(self, name_or_id: str) -> str:
-        """Obtém detalhes completos, especificações técnicas, estoque e promoções de um instrumento musical."""
+        """Obtém preço atual, especificações técnicas, estoque e informações de promoções ativas/expiradas de um instrumento musical pelo nome (ex: 'Takamine GD20', 'Yamaha C40') ou ID."""
         name_or_id_str = str(name_or_id).strip()
         product = None
 
