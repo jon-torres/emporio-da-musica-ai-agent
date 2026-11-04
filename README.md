@@ -209,6 +209,22 @@ uv run pytest -v
 
 ---
 
+## 🛡️ Guardrails e Proteção Contra Prompt Injection
+
+Em ambientes reais de produção, agentes de atendimento são alvos constantes de ataques adversariais como:
+- **Tentativas de Jailbreak / Prompt Injection**: Comandos como *"ignore todas as instruções anteriores"*, *"aja como outro personagem"* ou *"finja ser o DAN"*.
+- **Vazamento de Infraestrutura (*Model Leak*)**: Perguntas como *"qual modelo de IA você usa?"*, *"quem te criou?"* ou solicitações para cuspir o prompt de sistema interno.
+
+Para mitigar esses riscos sem comprometer a naturalidade do atendimento, foi implementada uma arquitetura de **Defesa em Duas Camadas (*Defense-in-Depth*)**:
+
+1. **Camada Programática Pre-Flight e Post-Flight (`src/emporio_agent/agent/guardrails.py`)**:
+   - **Pre-Flight**: Analisa a mensagem do usuário antes de repassar ao modelo. Padrões de jailbreak e tentativas de extração de engenharia reversa são bloqueados deterministicamente na entrada, economizando tokens e respondendo imediatamente com o posicionamento institucional da loja.
+   - **Post-Flight Sanitizer**: Inspeciona a resposta final do LLM para assegurar que menções a provedores ou modelos subjacentes (Google, OpenAI, Gemini, etc.) nunca vazem na resposta ao cliente.
+2. **Hardening do System Prompt (`prompts.py`)**:
+   - Instruções explícitas de identidade que orientam o modelo a manter sua persona estritamente como consultor musical da loja, recusando educadamente tarefas alheias ao universo de instrumentos da Empório da Música.
+
+---
+
 ## ⚠️ Limitações Conhecidas e Próximos Passos
 
 Caso houvesse mais tempo de desenvolvimento no projeto, as seguintes evoluções seriam priorizadas:

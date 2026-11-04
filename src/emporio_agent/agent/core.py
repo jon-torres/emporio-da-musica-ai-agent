@@ -2,6 +2,11 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 from pydantic import BaseModel, Field
 
+from emporio_agent.agent.guardrails import (
+    GUARDRAIL_STANDARD_RESPONSE,
+    detect_prompt_injection_or_meta_query,
+    sanitize_agent_output,
+)
 from emporio_agent.agent.llm_client import LLMClient
 from emporio_agent.agent.memory import ConversationMemory
 from emporio_agent.agent.prompts import SYSTEM_PROMPT
@@ -112,6 +117,15 @@ class EmporioAgent:
 
     def process_message(self, user_text: str) -> AgentTurnResult:
         """Process incoming user message through tool-calling loop and return persona response."""
+        # Pre-flight guardrail: intercept prompt injection, jailbreaks, and AI meta-questions
+        if detect_prompt_injection_or_meta_query(user_text):
+            self.memory.add_user_message(user_text)
+            self.memory.add_assistant_message(GUARDRAIL_STANDARD_RESPONSE)
+            return AgentTurnResult(
+                response=GUARDRAIL_STANDARD_RESPONSE,
+                tool_calls_executed=[],
+            )
+
         self.memory.add_user_message(user_text)
 
         # If native Gemini chat is available, use it directly
@@ -119,7 +133,7 @@ class EmporioAgent:
             self.last_executed_tools = []
             try:
                 res = self._gemini_chat.send_message(user_text)
-                final_text = res.text or ""
+                final_text = sanitize_agent_output(res.text or "")
                 self.memory.add_assistant_message(final_text)
                 return AgentTurnResult(
                     response=final_text,
@@ -145,7 +159,7 @@ class EmporioAgent:
 
             # If no tools called, we have the final assistant response
             if not llm_res.tool_calls:
-                final_text = llm_res.content or "Desculpe, não consegui processar a resposta. Como posso te ajudar?"
+                final_text = sanitize_agent_output(llm_res.content or "Desculpe, não consegui processar a resposta. Como posso te ajudar?")
                 self.memory.add_assistant_message(final_text)
                 return AgentTurnResult(
                     response=final_text,
